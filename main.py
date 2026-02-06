@@ -1,55 +1,71 @@
-from rembg import remove
-from PIL import Image
-import os
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import StreamingResponse, HTMLResponse
+from bg_remove import remove_background
 
-IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
+app = FastAPI(title="Background Remover")
 
-user_input = input(
-    "Enter image paths or folder paths (comma-separated): "
-)
+@app.get("/", response_class=HTMLResponse)
+def home():
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Background Remover</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                background: #143;
+                color: white;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+            }
+            .card {
+                background: #fff2;
+                padding: 20px;
+                border-radius: 10px;
+                text-align: center;
+                width: 320px;
+            }
+            input[type=file] {
+                margin: 15px 0;
+            }
+            button {
+                background: #fff;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 10px;
+                cursor: pointer;
+                font-weight: bold;
+            }
+            button:hover {
+                background: #fffc;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h2>Remove Image Background</h2>
+            <form action="/remove-bg" method="post" enctype="multipart/form-data">
+                <input type="file" name="image" accept="image/*" required />
+                <br />
+                <button type="submit">Upload & Remove</button>
+            </form>
+        </div>
+    </body>
+    </html>
+    """
 
-paths = [p.strip() for p in user_input.split(",") if p.strip()]
+@app.post("/remove-bg")
+async def remove_bg(image: UploadFile = File(...)):
+    image_bytes = await image.read()
+    output_image = remove_background(image_bytes)
 
-
-image_files = []
-
-for path in paths:
-    if os.path.isdir(path):
-        # Add all images in folder
-        for file in os.listdir(path):
-            if file.lower().endswith(IMAGE_EXTENSIONS):
-                image_files.append(os.path.join(path, file))
-
-    elif os.path.isfile(path) and path.lower().endswith(IMAGE_EXTENSIONS):
-        image_files.append(path)
-
-    else:
-        print(f"Skipping invalid path: {path}")
-
-if not image_files:
-    print("No valid images found.")
-    exit()
-
-
-output_dir = "new_photos"
-os.makedirs(output_dir, exist_ok=True)
-
-index = 1
-while os.path.exists(os.path.join(output_dir, f"photo{index}.png")):
-    index += 1
-
-for img_path in image_files:
-    try:
-        input_image = Image.open(img_path)
-        output_image = remove(input_image)
-
-        output_path = os.path.join(output_dir, f"photo{index}.png")
-        output_image.save(output_path)
-
-        print(f"Saved: {output_path}")
-        index += 1
-
-    except Exception as e:
-        print(f"Failed to process {img_path}: {e}")
-
-print(f"Done! Processed {index - 1} image(s).")
+    return StreamingResponse(
+        output_image,
+        media_type="image/png",
+        headers={
+            "Content-Disposition": "attachment; filename=removed_bg.png"
+        }
+    )
